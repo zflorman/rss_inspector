@@ -6,15 +6,17 @@ RSS_URL = "https://docs.house.gov/BillsThisWeek-RSS.xml"
 def inspect_rss_tail():
     print(f"--- CONNECTING TO {RSS_URL} ---")
     
-    # 1. We ask for the last 15,000 bytes (approx 15KB)
-    # This is small enough to be instant, large enough to catch the last 2-3 updates.
+    # 1. Ask for the last 15,000 bytes (Tail Read)
+    # 2. IMPORTANT: 'Accept-Encoding: identity' tells the server NOT to gzip the response.
+    #    (Partial gzip files are impossible to decode, so we need raw text).
     headers = {
         "User-Agent": "Mozilla/5.0 (TheCapitolWire Inspector)",
-        "Range": "bytes=-15000" 
+        "Range": "bytes=-15000",
+        "Accept-Encoding": "identity" 
     }
 
     try:
-        # stream=True ensures we don't accidentally download 50MB if the server ignores our Range header
+        # stream=True ensures we don't accidentally download 50MB if headers are ignored
         with requests.get(RSS_URL, headers=headers, stream=True, timeout=10) as r:
             
             print(f"HTTP Status Code: {r.status_code}")
@@ -26,7 +28,7 @@ def inspect_rss_tail():
                 print("   (Aborting download to prevent crash)")
                 return
             else:
-                print(f"❌ ERROR: Unexpected status code.")
+                print(f"❌ ERROR: Unexpected status code {r.status_code}")
                 return
 
             # Read the chunk
@@ -36,14 +38,14 @@ def inspect_rss_tail():
             print(chunk[-1000:]) 
             print("------------------------------------------\n")
 
-            # Run the extraction logic to see what it catches
+            # Run the extraction logic
             print("--- EXTRACTING LINKS ---")
             
-            # Regex 1: Find specific dated URLs
+            # Regex to find specific dated URLs
             matches = re.findall(r'href=["\'](http[s]?://docs\.house\.gov/floor/Default\.aspx\?date=[\d-]+)["\']', chunk)
             
-            # Regex 2: Check dates in <title> tags just for human verification
-            titles = re.findall(r'<title[^>]*>(.*?)</title>', chunk)
+            # Check for current week fallback
+            base_found = ("Default.aspx" in chunk)
 
             if matches:
                 print(f"🎯 FOUND {len(matches)} TARGET URLS:")
@@ -52,10 +54,8 @@ def inspect_rss_tail():
             else:
                 print("❌ NO TARGET URLS FOUND in the tail.")
                 
-            if titles:
-                print(f"\n👀 HUMAN CHECK (Titles found in this chunk):")
-                for t in titles:
-                    print(f"   - {t}")
+            if base_found:
+                print("ℹ️  Note: Standard 'Default.aspx' reference found (Current Week).")
 
     except Exception as e:
         print(f"CRASH: {e}")
